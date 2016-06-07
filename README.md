@@ -7,7 +7,7 @@ The DNS's AXFR system for replication is a bit tricky to set up, but once done i
 
 1. Install bdns on the secondary server
 2. Setup your primary server so that it allows transfers and notifies your secondary (or secondaries).
-3. Setup some system (cron, icron, control panel triggered script, whatever) on the primary server that adds/removes zones through the HTTP interface exposed by bdns. An example of that is the [http://github.com/kilburn/bdns-client](bdns-client) script.
+3. Setup some system (cron, icron, control panel triggered script, whatever) on the primary server that adds/removes zones through the HTTP interface exposed by bdns. An example of that is the [bdns-client](https://github.com/kilburn/bdns-client) script.
 
 Installation
 ============
