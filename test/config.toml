@@ -1,0 +1,20 @@
+zone_file = "3bf305731dd26307.nzf"
+port = 54515
+rndc = "test/rndc.sh"
+path = "test/"
+syslog = false
+
+# If the certificate is signed by a certificate authority, 
+# the certFile should be the concatenation of the server's 
+# certificate, any intermediates, and the CA's certificate. 
+ssl_enabled = true
+ssl_cert = "test/ssl/cert.bundle.crt"
+ssl_key = "test/ssl/cert.key"
+
+[[client]]
+username = "client1"
+password = "password1"
+
+[[client]]
+username = "client2"
+password = "password2"

@@ -1,0 +1,4 @@
+# bdns configuration options
+
+# Path to the bdns configuration file to use
+CONFIGFILE="/etc/bdns/bdns.conf"
