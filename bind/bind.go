@@ -106,6 +106,7 @@ func RndcZoneRemover(zd *ZoneManager, master Master, zone Zone) error {
 	if err := cmd.Run(); err != nil {
 		return err
 	}
+	log.Printf(`[exec] %s %s '%s'`, zd.rndcPath, "delzone", string(zone))
 
 	// It's ok if the zone does not exist
 	path := fmt.Sprintf(`%s/slave/%s.db`, zd.dataPath, zone)
