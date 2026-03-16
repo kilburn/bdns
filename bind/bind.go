@@ -205,7 +205,7 @@ func (zd *ZoneManager) RndcPath(path string) {
 	zd.rndcPath = path
 }
 
-var bindLine = regexp.MustCompile(`zone "?([^\s"{]+)"?\s*{type\s+slave;\s*file\s+"[^"]+";\s*masters\s*{\s*([^;]+)\s*;\s*}\s*;\s*}\s*;`)
+var bindLine = regexp.MustCompile(`zone\s+"?([^"\s]+)"?\s*\{.*type\s+slave;.*masters\s*{\s*([^;]+);.*\};`)
 var ignoredLine = regexp.MustCompile(`^\s*(#.*)?$`)
 
 func parseLine(line string) (found bool, master Master, zone Zone) {

@@ -8,6 +8,8 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/exec"     // <--- AFEGIR AQUEST
+    	"path/filepath" // <--- AFEGIR AQUEST per gestionar rutes netament
 	"strconv"
 	"strings"
 
@@ -30,22 +32,29 @@ func authHandler(fn func(w http.ResponseWriter, r *http.Request, host bind.Maste
 			_ = recover()
 		}()
 
-		host, _, err := net.SplitHostPort(r.RemoteAddr)
-		if err != nil {
-			http.Error(w, "Sorry, I am unable to establish your origin.", http.StatusForbidden)
-			log.Panicf("Unable to establish identity of connection from %v\n", r.RemoteAddr)
+		// Extraiem la IP real (per si venim de Nginx)
+		hostAddr := r.Header.Get("X-Real-IP")
+		if hostAddr == "" {
+			// Si no hi ha header, agafem la IP de la connexió directa
+			var err error
+			hostAddr, _, err = net.SplitHostPort(r.RemoteAddr)
+			if err != nil {
+				http.Error(w, "Unable to establish origin.", http.StatusForbidden)
+				return
+			}
 		}
 
+		// Autenticació
 		username, password, ok := r.BasicAuth()
 		if !ok || !isValidUser(username, password) {
 			w.Header().Set("WWW-Authenticate", "Basic realm=\"bdns\"")
 			http.Error(w, "Invalid credentials.", http.StatusUnauthorized)
-			log.Panicf("Unauthorized request from %v\n", host)
+			log.Panicf("Unauthorized request from %v\n", hostAddr)
 		}
 
-		log.Printf("[%s] %s %s\n", host, r.Method, r.URL.Path)
+		log.Printf("[%s] %s %s\n", hostAddr, r.Method, r.URL.Path)
 		w.Header().Set("Content-type", "text/plain")
-		fn(w, r, bind.Master(host))
+		fn(w, r, bind.Master(hostAddr))
 	}
 }
 
@@ -134,18 +143,69 @@ func loadConfiguration() {
 }
 
 func loadZoneManager() {
-	log.Print("Loading zones")
-	reader, err := os.Open(conf.Path + "/" + conf.ZoneFile)
-	if err != nil {
-		log.Fatalf("Unable to open the zones file (%v)", err)
-	}
+	log.Print("Loading zones from BIND directly (Nut2 Modern Mode)")
+
 	zoneManager = bind.NewZoneManager()
 	zoneManager.ZoneAdder(bind.RndcZoneAdder)
 	zoneManager.ZoneRemover(bind.RndcZoneRemover)
+	
+	// Validació de rutes per evitar punters nuls
+	if conf.Path == "" {
+		conf.Path = "/var/cache/bind"
+	}
+	if conf.Rndc == "" {
+		conf.Rndc = "/usr/sbin/rndc"
+	}
+	
 	zoneManager.Path(conf.Path)
 	zoneManager.RndcPath(conf.Rndc)
-	zoneManager.LoadZones(reader)
-	log.Print("Done loading zones")
+
+	// Inicialitzem el manager amb un lector buit
+	zoneManager.LoadZones(strings.NewReader(""))
+
+	slavePath := filepath.Join(conf.Path, "slave")
+	files, err := os.ReadDir(slavePath)
+	if err != nil {
+		log.Printf("Error llegint directori slave: %v", err)
+		return
+	}
+
+	count := 0
+	for _, file := range files {
+		if !file.IsDir() && strings.HasSuffix(file.Name(), ".db") {
+			zoneName := strings.TrimSuffix(file.Name(), ".db")
+
+			// Executem rndc showzone
+			out, err := exec.Command(conf.Rndc, "showzone", zoneName).Output()
+			if err != nil {
+				continue
+			}
+
+			// NETEJA DE LA LÍNIA: 
+			// 1. Convertim el resultat a text
+			// 2. Eliminem salts de línia i tabuladors per fer-ho una sola línia plana
+			line := strings.ReplaceAll(string(out), "\n", " ")
+			line = strings.ReplaceAll(line, "\r", " ")
+			line = strings.ReplaceAll(line, "\t", " ")
+			line = strings.TrimSpace(line)
+
+			// 3. Ens assegurem que la línia conté el necessari per a la regex
+			if strings.Contains(line, "type slave") && strings.Contains(line, "masters") {
+				// PROTECCIÓ CONTRA PANICS:
+				// Si la regex de bind.go falla, el defer recover evitarà que el programa mori
+				func() {
+					defer func() {
+						if r := recover(); r != nil {
+							log.Printf("[Warning] Error parsejant zona %s: %v", zoneName, r)
+						}
+					}()
+					zoneManager.LoadZones(strings.NewReader(line))
+					count++
+				}()
+			}
+		}
+	}
+	log.Printf("Done loading %d zones from BIND via RNDC", count)
 }
 
 func serve() {
